@@ -2323,8 +2323,94 @@ FarmTab:Input({
 })
 
 
+local MiscTab = Window:Tab({Title = "Misc", Icon = "hand-coins"})
 
 
+--// Services
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+--// Safe Load CrateController
+local CrateController
+do
+    local success, result = pcall(function()
+        local module = ReplicatedStorage:FindFirstChild("Modules")
+            and ReplicatedStorage.Modules:FindFirstChild("Game")
+            and ReplicatedStorage.Modules.Game:FindFirstChild("CrateSystem")
+            and ReplicatedStorage.Modules.Game.CrateSystem:FindFirstChild("Crate")
+
+        if not module then
+            error("Crate module not found")
+        end
+
+        return require(module)
+    end)
+
+    if success then
+        CrateController = result
+    else
+        warn("[Skip Animation] โหลด CrateController ไม่ได้:", result)
+        return
+    end
+end
+
+--// Toggle State
+local EnabledSkip = false
+
+--// Toggle UI
+MiscTab:Toggle({
+    Title = "Skip Animation",
+    Default = false,
+
+    Callback = function(v)
+        EnabledSkip = v
+
+        if not v then return end
+
+        task.spawn(function()
+            while EnabledSkip do
+                task.wait()
+
+                --// เช็ค object ก่อน
+                if CrateController
+                    and CrateController.class
+                    and CrateController.class.objects then
+
+                    for _, crate in pairs(CrateController.class.objects) do
+                        pcall(function()
+                            if crate.states
+                                and crate.states.open
+                                and crate.states.open.set then
+
+                                crate.states.open.set(true)
+                            end
+                        end)
+                    end
+                end
+
+                --// เปิดโหมด skip
+                pcall(function()
+                    if CrateController.skipping
+                        and CrateController.skipping.set then
+
+                        CrateController.skipping.set(true)
+                    end
+                end)
+
+                --// skip spin ถ้าไม่ได้หมุนอยู่
+                pcall(function()
+                    if CrateController.spinning
+                        and CrateController.spinning.get
+                        and not CrateController.spinning.get() then
+
+                        if CrateController.skip_spin then
+                            CrateController.skip_spin()
+                        end
+                    end
+                end)
+            end
+        end)
+    end
+})
 
 
 
