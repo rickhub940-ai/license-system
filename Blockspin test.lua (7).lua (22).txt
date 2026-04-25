@@ -2329,34 +2329,56 @@ local MiscTab = Window:Tab({Title = "Misc", Icon = "hand-coins"})
 --// Services
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
---// Safe Load CrateController
-local CrateController
-do
-    local success, result = pcall(function()
-        local module = ReplicatedStorage:FindFirstChild("Modules")
-            and ReplicatedStorage.Modules:FindFirstChild("Game")
-            and ReplicatedStorage.Modules.Game:FindFirstChild("CrateSystem")
-            and ReplicatedStorage.Modules.Game.CrateSystem:FindFirstChild("Crate")
-
-        if not module then
-            error("Crate module not found")
-        end
-
-        return require(module)
-    end)
-
-    if success then
-        CrateController = result
-    else
-        warn("[Skip Animation] โหลด CrateController ไม่ได้:", result)
-        return
-    end
+--// Debug Print
+local function Log(msg)
+    print("[SkipAnimation]:", msg)
 end
 
---// Toggle State
+local function Warn(msg)
+    warn("[SkipAnimation ERROR]:", msg)
+end
+
+--// Load CrateController แบบละเอียด
+local CrateController = nil
+
+do
+    local Modules = ReplicatedStorage:FindFirstChild("Modules")
+    if not Modules then
+        Warn("ไม่เจอ Modules ใน ReplicatedStorage")
+        return
+    end
+
+    local GameFolder = Modules:FindFirstChild("Game")
+    if not GameFolder then
+        Warn("ไม่เจอ Game ใน Modules")
+        return
+    end
+
+    local CrateSystem = GameFolder:FindFirstChild("CrateSystem")
+    if not CrateSystem then
+        Warn("ไม่เจอ CrateSystem")
+        return
+    end
+
+    local CrateModule = CrateSystem:FindFirstChild("Crate")
+    if not CrateModule then
+        Warn("ไม่เจอ Module: Crate")
+        return
+    end
+
+    local success, result = pcall(require, CrateModule)
+    if not success then
+        Warn("require CrateController ล้มเหลว: " .. tostring(result))
+        return
+    end
+
+    CrateController = result
+    Log("โหลด CrateController สำเร็จ")
+end
+
+--// Toggle
 local EnabledSkip = false
 
---// Toggle UI
 MiscTab:Toggle({
     Title = "Skip Animation",
     Default = false,
@@ -2364,50 +2386,95 @@ MiscTab:Toggle({
     Callback = function(v)
         EnabledSkip = v
 
+        Log("สถานะ: " .. tostring(v))
+
         if not v then return end
 
         task.spawn(function()
             while EnabledSkip do
                 task.wait()
 
-                --// เช็ค object ก่อน
-                if CrateController
-                    and CrateController.class
-                    and CrateController.class.objects then
+                --// เช็ค objects
+                if not CrateController.class then
+                    Warn("ไม่มี class ใน CrateController")
+                    break
+                end
 
-                    for _, crate in pairs(CrateController.class.objects) do
-                        pcall(function()
-                            if crate.states
-                                and crate.states.open
-                                and crate.states.open.set then
+                if not CrateController.class.objects then
+                    Warn("ไม่มี objects")
+                    break
+                end
 
-                                crate.states.open.set(true)
-                            end
-                        end)
+                --// เปิด crate
+                for i, crate in pairs(CrateController.class.objects) do
+                    if not crate.states then
+                        Warn("crate["..i.."] ไม่มี states")
+                        continue
+                    end
+
+                    if not crate.states.open then
+                        Warn("crate["..i.."] ไม่มี open")
+                        continue
+                    end
+
+                    if not crate.states.open.set then
+                        Warn("crate["..i.."] ไม่มี open.set")
+                        continue
+                    end
+
+                    local ok, err = pcall(function()
+                        crate.states.open.set(true)
+                    end)
+
+                    if not ok then
+                        Warn("เปิด crate ไม่ได้: ".. tostring(err))
                     end
                 end
 
-                --// เปิดโหมด skip
-                pcall(function()
-                    if CrateController.skipping
-                        and CrateController.skipping.set then
-
+                --// skipping
+                if CrateController.skipping and CrateController.skipping.set then
+                    local ok, err = pcall(function()
                         CrateController.skipping.set(true)
+                    end)
+
+                    if not ok then
+                        Warn("skipping.set error: ".. tostring(err))
                     end
-                end)
+                else
+                    Warn("ไม่มี skipping.set")
+                end
 
-                --// skip spin ถ้าไม่ได้หมุนอยู่
-                pcall(function()
-                    if CrateController.spinning
-                        and CrateController.spinning.get
-                        and not CrateController.spinning.get() then
+                --// skip spin
+                if CrateController.spinning and CrateController.spinning.get then
+                    local spinning = false
 
-                        if CrateController.skip_spin then
-                            CrateController.skip_spin()
+                    local ok, err = pcall(function()
+                        spinning = CrateController.spinning.get()
+                    end)
+
+                    if not ok then
+                        Warn("spinning.get error: ".. tostring(err))
+                    else
+                        if not spinning then
+                            if CrateController.skip_spin then
+                                local ok2, err2 = pcall(function()
+                                    CrateController.skip_spin()
+                                end)
+
+                                if not ok2 then
+                                    Warn("skip_spin error: ".. tostring(err2))
+                                end
+                            else
+                                Warn("ไม่มี skip_spin")
+                            end
                         end
                     end
-                end)
+                else
+                    Warn("ไม่มี spinning.get")
+                end
             end
+
+            Log("Loop หยุดทำงาน")
         end)
     end
 })
